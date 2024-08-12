@@ -1,0 +1,55 @@
+services:
+  pg:
+    image: public.ecr.aws/docker/library/postgres:alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=app
+      - POSTGRES_USER=app
+      - POSTGRES_PASSWORD=app
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+  incident-service:
+    image: sk.janobono.emergency/incident-service:latest
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Bratislava
+      - DB_URL=jdbc:postgresql://pg:5432/app
+    depends_on:
+      - pg
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.incident-service.rule=PathPrefix(`/api`)
+      - traefik.http.routers.incident-service.entrypoints=web
+      - traefik.http.services.incident-service.loadbalancer.server.port=8080
+
+  dashboard-ui:
+    image: sk.janobono.emergency/dashboard-ui:latest
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Bratislava
+    depends_on:
+      - incident-service
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.dashboard-ui.rule=PathPrefix(`/`)
+      - traefik.http.routers.dashboard-ui.entrypoints=web
+      - traefik.http.services.dashboard-ui.loadbalancer.server.port=80
+
+  traefik:
+    image: public.ecr.aws/docker/library/traefik:latest
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+volumes:
+  pg-data:
